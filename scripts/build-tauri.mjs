@@ -35,6 +35,18 @@ const exitCode = await new Promise((resolve, reject) => {
 
 if (exitCode !== 0) process.exit(exitCode);
 
+const executableSource = path.join(targetDir, "release", "codex-pulse.exe");
+const executableDestination = path.join(
+  projectRoot,
+  "src-tauri",
+  "target",
+  "release",
+  "codex-pulse.exe",
+);
+await mkdir(path.dirname(executableDestination), { recursive: true });
+await cp(executableSource, executableDestination, { force: true });
+console.log(`Executable copied to ${executableDestination}`);
+
 if (!noBundle) {
   const source = path.join(targetDir, "release", "bundle");
   const destination = path.join(projectRoot, "src-tauri", "target", "release", "bundle");

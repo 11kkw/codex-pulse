@@ -32,17 +32,19 @@ use windows_sys::Win32::{
         WindowsAndMessaging::{
             AppendMenuW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu,
             DestroyWindow, DispatchMessageW, GetClientRect, GetCursorPos, GetMessageW,
-            GetWindowLongPtrW, GetWindowRect, KillTimer, LoadCursorW, PostMessageW,
-            PostQuitMessage, RegisterClassExW, RegisterWindowMessageW, SetForegroundWindow,
-            SetTimer, SetWindowLongPtrW, SetWindowPos, ShowWindow, TrackPopupMenuEx,
-            TranslateMessage, CREATESTRUCTW, CS_HREDRAW, CS_VREDRAW, GWLP_HWNDPARENT,
-            GWLP_USERDATA, HWND_TOPMOST, IDC_ARROW, MA_NOACTIVATE, MF_SEPARATOR, MF_STRING, MSG,
-            SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE, SW_HIDE,
-            SW_SHOWNOACTIVATE, TPM_RETURNCMD, TPM_RIGHTBUTTON, WM_APP, WM_CLOSE, WM_CONTEXTMENU,
-            WM_DESTROY, WM_DISPLAYCHANGE,
-            WM_DPICHANGED, WM_DWMCOMPOSITIONCHANGED, WM_ERASEBKGND, WM_LBUTTONDOWN, WM_LBUTTONUP,
-            WM_MOUSEACTIVATE, WM_MOUSEMOVE, WM_NCCREATE, WM_NCDESTROY, WM_PAINT, WM_SETTINGCHANGE,
-            WM_TIMER, WNDCLASSEXW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
+            GetWindowLongPtrW, GetWindowRect, IsIconic, IsWindowVisible, KillTimer, LoadCursorW,
+            PostMessageW, PostQuitMessage, RegisterClassExW, RegisterWindowMessageW,
+            SetForegroundWindow, SetTimer, SetWindowLongPtrW, SetWindowPos, ShowWindow,
+            TrackPopupMenuEx, TranslateMessage, CREATESTRUCTW, CS_HREDRAW, CS_VREDRAW,
+            GWLP_HWNDPARENT, GWLP_USERDATA, HWND_TOPMOST, IDC_ARROW, MA_NOACTIVATE, MF_CHECKED,
+            MF_SEPARATOR, MF_STRING, MSG, SC_MINIMIZE, SWP_HIDEWINDOW, SWP_NOACTIVATE, SWP_NOMOVE,
+            SWP_NOOWNERZORDER, SWP_NOSIZE, SWP_NOZORDER, SW_HIDE, SW_SHOWNOACTIVATE, TPM_RETURNCMD,
+            TPM_RIGHTBUTTON, WINDOWPOS, WM_APP, WM_CLOSE, WM_CONTEXTMENU, WM_DESTROY,
+            WM_DISPLAYCHANGE, WM_DPICHANGED, WM_DWMCOMPOSITIONCHANGED, WM_ERASEBKGND,
+            WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEACTIVATE, WM_MOUSEMOVE, WM_NCCREATE,
+            WM_NCDESTROY, WM_PAINT, WM_SETTINGCHANGE, WM_SYSCOMMAND, WM_TIMER,
+            WM_WINDOWPOSCHANGING, WNDCLASSEXW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
+            WS_POPUP,
         },
     },
 };
@@ -57,7 +59,7 @@ const WINDOW_TITLE: &str = "Codex Pulse Native Widget";
 const LOGICAL_WIDTH: i32 = 306;
 const LOGICAL_HEIGHT: i32 = 48;
 const POSITION_TIMER_ID: usize = 1;
-const POSITION_TIMER_MS: u32 = 1_000;
+const POSITION_TIMER_MS: u32 = 100;
 
 const MSG_REFRESH: u32 = WM_APP + 1;
 const MSG_SHOW_TASKBAR: u32 = WM_APP + 2;
@@ -68,8 +70,9 @@ const MENU_DETAIL: usize = 1001;
 const MENU_REFRESH: usize = 1002;
 const MENU_OVERLAY: usize = 1003;
 const MENU_THEME: usize = 1004;
-const MENU_HIDE: usize = 1005;
-const MENU_QUIT: usize = 1006;
+const MENU_AUTOSTART: usize = 1005;
+const MENU_HIDE: usize = 1006;
+const MENU_QUIT: usize = 1007;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum WidgetTheme {
@@ -100,6 +103,7 @@ pub enum NativeWidgetEvent {
     Refresh,
     SwitchToOverlay,
     SetTheme(WidgetTheme),
+    ToggleAutostart,
     Hide,
     Quit,
 }
@@ -112,6 +116,7 @@ struct NativeWidgetModel {
     memory_percent: Option<f32>,
     detail_visible: bool,
     theme: WidgetTheme,
+    autostart_enabled: bool,
 }
 
 #[derive(Default)]
@@ -217,6 +222,12 @@ impl NativeWidgetController {
             model.theme = theme;
         }
         self.request_refresh();
+    }
+
+    pub fn set_autostart_enabled(&self, enabled: bool) {
+        if let Ok(mut model) = self.shared.model.lock() {
+            model.autostart_enabled = enabled;
+        }
     }
 
     pub fn show_taskbar(&self) {
@@ -405,6 +416,27 @@ unsafe extern "system" fn window_proc(
         }
         WM_ERASEBKGND => 1,
         WM_MOUSEACTIVATE => MA_NOACTIVATE as LRESULT,
+        WM_SYSCOMMAND
+            if shared
+                .map(|shared| shared.visible.load(Ordering::Acquire))
+                .unwrap_or(false)
+                && (wparam & 0xfff0) == SC_MINIMIZE as usize =>
+        {
+            0
+        }
+        WM_WINDOWPOSCHANGING => {
+            if shared
+                .map(|shared| shared.visible.load(Ordering::Acquire))
+                .unwrap_or(false)
+            {
+                let position = lparam as *mut WINDOWPOS;
+                if !position.is_null() {
+                    (*position).flags &= !(SWP_HIDEWINDOW | SWP_NOZORDER);
+                    (*position).hwndInsertAfter = HWND_TOPMOST;
+                }
+            }
+            DefWindowProcW(hwnd, message, wparam, lparam)
+        }
         WM_LBUTTONDOWN => {
             if let Some(shared) = shared {
                 record_interaction(shared);
@@ -475,10 +507,15 @@ unsafe extern "system" fn window_proc(
         WM_TIMER if wparam == POSITION_TIMER_ID => {
             if let Some(shared) = shared {
                 let tick = shared.timer_ticks.fetch_add(1, Ordering::AcqRel) + 1;
-                if tick % 5 == 0 {
+                if shared.visible.load(Ordering::Acquire) {
+                    if IsWindowVisible(hwnd) == 0 || IsIconic(hwnd) != 0 {
+                        ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+                    }
                     position_over_taskbar(hwnd, shared);
                 }
-                InvalidateRect(hwnd, null(), 0);
+                if tick % 10 == 0 {
+                    InvalidateRect(hwnd, null(), 0);
+                }
             }
             0
         }
@@ -927,11 +964,11 @@ unsafe fn show_context_menu(hwnd: HWND, shared: &NativeWidgetShared) {
         return;
     }
 
-    let (detail_visible, theme) = shared
+    let (detail_visible, theme, autostart_enabled) = shared
         .model
         .lock()
-        .map(|model| (model.detail_visible, model.theme))
-        .unwrap_or((false, WidgetTheme::Dark));
+        .map(|model| (model.detail_visible, model.theme, model.autostart_enabled))
+        .unwrap_or((false, WidgetTheme::Dark, false));
     append_menu(
         menu,
         MENU_DETAIL,
@@ -952,6 +989,13 @@ unsafe fn show_context_menu(hwnd: HWND, shared: &NativeWidgetShared) {
         } else {
             "다크 모드"
         },
+    );
+    let autostart_label = wide("Windows 시작 시 자동 실행");
+    AppendMenuW(
+        menu,
+        MF_STRING | if autostart_enabled { MF_CHECKED } else { 0 },
+        MENU_AUTOSTART,
+        autostart_label.as_ptr(),
     );
     AppendMenuW(menu, MF_SEPARATOR, 0, null());
     append_menu(menu, MENU_HIDE, "위젯 숨기기");
@@ -978,6 +1022,7 @@ unsafe fn show_context_menu(hwnd: HWND, shared: &NativeWidgetShared) {
         MENU_REFRESH => Some(NativeWidgetEvent::Refresh),
         MENU_OVERLAY => Some(NativeWidgetEvent::SwitchToOverlay),
         MENU_THEME => Some(NativeWidgetEvent::SetTheme(theme.toggled())),
+        MENU_AUTOSTART => Some(NativeWidgetEvent::ToggleAutostart),
         MENU_HIDE => Some(NativeWidgetEvent::Hide),
         MENU_QUIT => Some(NativeWidgetEvent::Quit),
         _ => None,
@@ -1029,16 +1074,7 @@ unsafe fn draw_text(
     if direct_text
         .map(|canvas| {
             canvas
-                .draw(
-                    text,
-                    x,
-                    y,
-                    width,
-                    height,
-                    color,
-                    font_size,
-                    font_weight,
-                )
+                .draw(text, x, y, width, height, color, font_size, font_weight)
                 .is_ok()
         })
         .unwrap_or(false)

@@ -21,14 +21,16 @@ use native_widget::{NativeWidgetController, NativeWidgetEvent, WidgetTheme};
 use system_monitor::SystemMonitor;
 use taskbar::PlacementMode;
 use tauri::{
-    menu::{MenuBuilder, MenuItemBuilder},
+    menu::{CheckMenuItem, CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Emitter, Manager, State, WindowEvent,
 };
+use tauri_plugin_autostart::{MacosLauncher, ManagerExt as AutostartManagerExt};
 
 struct CodexState(Arc<Mutex<CodexProvider>>);
 struct MonitorState(Arc<Mutex<SystemMonitor>>);
 struct PlacementState(Mutex<PlacementMode>);
+struct OverlayPositionState(Mutex<Option<tauri::PhysicalPosition<i32>>>);
 struct TelemetryCache {
     codex: Mutex<Option<CodexSnapshot>>,
     system: Mutex<Option<SystemSnapshot>>,
@@ -36,6 +38,8 @@ struct TelemetryCache {
 struct TelemetryState(Arc<TelemetryCache>);
 #[cfg(windows)]
 struct NativeWidgetState(Arc<NativeWidgetController>);
+#[cfg(windows)]
+struct AutostartMenuState(CheckMenuItem<tauri::Wry>);
 
 #[cfg(windows)]
 struct SingleInstanceGuard(windows_sys::Win32::Foundation::HANDLE);
@@ -231,7 +235,17 @@ fn show_compact(app: &tauri::AppHandle) {
     } else {
         native.0.hide();
         if let Some(window) = app.get_webview_window("main") {
-            let _ = taskbar::place_main(&window, PlacementMode::Overlay);
+            let saved_position = app
+                .state::<OverlayPositionState>()
+                .0
+                .lock()
+                .ok()
+                .and_then(|position| *position);
+            if let Some(position) = saved_position {
+                let _ = window.set_position(position);
+            } else {
+                let _ = taskbar::place_main(&window, PlacementMode::Overlay);
+            }
             let _ = window.show();
             let _ = window.set_focus();
         }
@@ -240,6 +254,21 @@ fn show_compact(app: &tauri::AppHandle) {
 
 fn set_placement_mode(app: &tauri::AppHandle, mode: PlacementMode) {
     logging::write(format!("placement mode changed: {}", mode.as_str()));
+    let previous = app
+        .state::<PlacementState>()
+        .0
+        .lock()
+        .map(|current| *current)
+        .unwrap_or_default();
+    if previous == PlacementMode::Overlay && mode != PlacementMode::Overlay {
+        if let Some(window) = app.get_webview_window("main") {
+            if let Ok(position) = window.outer_position() {
+                if let Ok(mut saved) = app.state::<OverlayPositionState>().0.lock() {
+                    *saved = Some(position);
+                }
+            }
+        }
+    }
     if let Ok(mut current) = app.state::<PlacementState>().0.lock() {
         *current = mode;
     }
@@ -251,6 +280,33 @@ fn set_placement_mode(app: &tauri::AppHandle, mode: PlacementMode) {
 fn set_theme(app: &tauri::AppHandle, theme: WidgetTheme) {
     app.state::<NativeWidgetState>().0.set_theme(theme);
     let _ = app.emit("monitor://set-theme", theme.as_str());
+}
+
+fn sync_autostart_state(app: &tauri::AppHandle, enabled: bool) {
+    app.state::<NativeWidgetState>()
+        .0
+        .set_autostart_enabled(enabled);
+    if let Some(menu) = app.try_state::<AutostartMenuState>() {
+        let _ = menu.0.set_checked(enabled);
+    }
+}
+
+fn toggle_autostart(app: &tauri::AppHandle) {
+    let manager = app.autolaunch();
+    let enabled = manager.is_enabled().unwrap_or(false);
+    let result = if enabled {
+        manager.disable()
+    } else {
+        manager.enable()
+    };
+    match result {
+        Ok(()) => {
+            let current = manager.is_enabled().unwrap_or(!enabled);
+            sync_autostart_state(app, current);
+            logging::write(format!("autostart changed: {current}"));
+        }
+        Err(error) => logging::write(format!("autostart change failed: {error}")),
+    }
 }
 
 fn refresh_codex_now(app: &tauri::AppHandle) {
@@ -282,6 +338,7 @@ fn handle_native_widget_event(app: &tauri::AppHandle, event: NativeWidgetEvent) 
             set_placement_mode(app, PlacementMode::Overlay);
         }
         NativeWidgetEvent::SetTheme(theme) => set_theme(app, theme),
+        NativeWidgetEvent::ToggleAutostart => toggle_autostart(app),
         NativeWidgetEvent::Hide => {
             app.state::<NativeWidgetState>().0.hide();
             if let Some(window) = app.get_webview_window("main") {
@@ -360,9 +417,14 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_autostart::init(
+            MacosLauncher::LaunchAgent,
+            None,
+        ))
         .manage(CodexState(Arc::new(Mutex::new(CodexProvider::new()))))
         .manage(MonitorState(Arc::new(Mutex::new(SystemMonitor::new()))))
         .manage(PlacementState(Mutex::new(PlacementMode::Taskbar)))
+        .manage(OverlayPositionState(Mutex::new(None)))
         .manage(TelemetryState(Arc::new(TelemetryCache {
             codex: Mutex::new(None),
             system: Mutex::new(None),
@@ -384,6 +446,8 @@ pub fn run() {
             let (widget_events_tx, widget_events_rx) = mpsc::channel();
             let native_widget =
                 NativeWidgetController::start(widget_events_tx).map_err(std::io::Error::other)?;
+            let autostart_enabled = app.autolaunch().is_enabled().unwrap_or(false);
+            native_widget.set_autostart_enabled(autostart_enabled);
             app.manage(NativeWidgetState(native_widget));
 
             let event_app = app.handle().clone();
@@ -404,6 +468,9 @@ pub fn run() {
             let overlay_mode = MenuItemBuilder::with_id("overlay_mode", "자유 배치").build(app)?;
             let light_theme = MenuItemBuilder::with_id("light_theme", "라이트 모드").build(app)?;
             let dark_theme = MenuItemBuilder::with_id("dark_theme", "다크 모드").build(app)?;
+            let autostart = CheckMenuItemBuilder::with_id("autostart", "Windows 시작 시 자동 실행")
+                .checked(autostart_enabled)
+                .build(app)?;
             let refresh = MenuItemBuilder::with_id("refresh", "사용량 새로고침").build(app)?;
             let hide = MenuItemBuilder::with_id("hide", "위젯 숨기기").build(app)?;
             let quit = MenuItemBuilder::with_id("quit", "앱 종료").build(app)?;
@@ -414,11 +481,13 @@ pub fn run() {
                     &overlay_mode,
                     &light_theme,
                     &dark_theme,
+                    &autostart,
                     &refresh,
                     &hide,
                     &quit,
                 ])
                 .build()?;
+            app.manage(AutostartMenuState(autostart));
 
             let mut tray = TrayIconBuilder::new()
                 .tooltip("Codex Pulse")
@@ -430,6 +499,7 @@ pub fn run() {
                     "overlay_mode" => set_placement_mode(app, PlacementMode::Overlay),
                     "light_theme" => set_theme(app, WidgetTheme::Light),
                     "dark_theme" => set_theme(app, WidgetTheme::Dark),
+                    "autostart" => toggle_autostart(app),
                     "refresh" => {
                         let _ = app.emit("monitor://refresh", ());
                         refresh_codex_now(app);
@@ -471,6 +541,24 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
+            if window.label() == "main" {
+                if let WindowEvent::Moved(position) = event {
+                    let is_overlay = window
+                        .app_handle()
+                        .state::<PlacementState>()
+                        .0
+                        .lock()
+                        .map(|mode| *mode == PlacementMode::Overlay)
+                        .unwrap_or(false);
+                    if is_overlay {
+                        if let Ok(mut saved) =
+                            window.app_handle().state::<OverlayPositionState>().0.lock()
+                        {
+                            *saved = Some(*position);
+                        }
+                    }
+                }
+            }
             if let WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
                 let _ = window.hide();

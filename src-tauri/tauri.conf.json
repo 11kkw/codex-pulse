@@ -1,0 +1,70 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Codex Pulse",
+  "version": "0.1.0",
+  "identifier": "com.codexpulse.widget",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build:frontend",
+    "frontendDist": "../dist/client"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Codex Pulse",
+        "width": 306,
+        "height": 64,
+        "minWidth": 306,
+        "minHeight": 32,
+        "maxWidth": 306,
+        "maxHeight": 64,
+        "resizable": false,
+        "fullscreen": false,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "shadow": false,
+        "visible": false
+      },
+      {
+        "label": "detail",
+        "title": "Codex Pulse Details",
+        "url": "index.html?view=detail",
+        "width": 306,
+        "height": 496,
+        "minWidth": 306,
+        "minHeight": 320,
+        "maxWidth": 306,
+        "maxHeight": 496,
+        "resizable": false,
+        "fullscreen": false,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "shadow": false,
+        "visible": false,
+        "focus": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis", "msi"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "shortDescription": "Codex usage and Windows resource taskbar widget",
+    "longDescription": "A compact always-on-top widget for Codex rate limits, token activity, CPU, and memory usage."
+  }
+}

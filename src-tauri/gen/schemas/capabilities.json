@@ -1,0 +1,1 @@
+{"default":{"identifier":"default","description":"Codex Pulse main window capabilities","local":true,"windows":["main","detail"],"permissions":["core:default","core:event:default","core:window:allow-hide","core:window:allow-show","core:window:allow-set-size","core:window:allow-set-position","core:window:allow-start-dragging"]}}

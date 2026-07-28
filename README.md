@@ -2,6 +2,13 @@
 
 Windows 작업 표시줄 왼쪽에 고정하는 Codex 사용량 및 시스템 상태 위젯입니다.
 
+## 다운로드
+
+[GitHub Releases에서 최신 Windows 설치 프로그램 다운로드](https://github.com/pjhun0412/codex-pulse/releases/latest)
+
+현재 설치 파일은 디지털 서명되지 않았습니다. 실행할 때 Windows SmartScreen 경고가
+표시될 수 있습니다.
+
 ## 현재 구현
 
 - Tauri 2 + React 19 + TypeScript + Rust

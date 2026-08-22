@@ -8,7 +8,7 @@ import { useTheme } from "./hooks/useTheme";
 import { isTauriRuntime } from "./lib/runtime";
 import { openWidgetContextMenu } from "./lib/widgetContextMenu";
 
-type PlacementMode = "taskbar" | "overlay";
+type PlacementMode = "taskbar" | "menubar" | "overlay";
 
 function usePlacementMode() {
   const [placementMode, setPlacementMode] = useState<PlacementMode>("taskbar");
@@ -68,7 +68,7 @@ function CompactWindow() {
         onContextMenu={(event) => {
           event.preventDefault();
           event.stopPropagation();
-          if (placementMode === "taskbar") return;
+          if (placementMode !== "overlay") return;
           void openWidgetContextMenu({
             detailVisible,
             placementMode,
@@ -82,7 +82,7 @@ function CompactWindow() {
           void invoke("hide_detail");
         }}
         onToggle={() => {
-          if (placementMode === "taskbar") return;
+          if (placementMode !== "overlay") return;
           void invoke<boolean>("toggle_detail").then(setDetailVisible);
         }}
       />

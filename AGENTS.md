@@ -15,6 +15,9 @@ When implementing from a selected generated mock, treat that image as the source
 - Never invent a subscription expiration date. Show only fields returned by Codex app-server; rate-limit reset times are allowed.
 - Never show fabricated usage or system metrics. Unavailable values must render as `-` with the actual connection error.
 - Support two placement modes: a Win32 child window embedded under Explorer's taskbar window, and a draggable free overlay.
+- Default macOS to a RunCat-like menu bar status item showing live Codex, CPU, and memory values; clicking it opens the attached detail panel. Keep the draggable always-on-top overlay as an optional mode, and do not expose Windows-only taskbar docking on macOS.
+- Use a dedicated monochrome 18pt macOS template icon for the menu bar; never reuse the full-color square application icon there. macOS bundles must remain Launch Services/Spotlight discoverable as a Developer Tool.
+- Keep the macOS menu bar item readable and deliberately grouped. Codex remaining allowance is the primary value: use the pattern `81% · CPU 24% · RAM 75%` without a visible `남음` label. Preserve a space between every label and value, retain `%` on every available metric, and use a dedicated monochrome meter icon rather than an emoji or text glyph.
 - Keep the compact bar and detail popup as separate native windows. Do not resize one transparent window to toggle details.
 - Close the detail popup only after both native windows lose focus, so clicks between the compact bar and detail panel remain usable.
 

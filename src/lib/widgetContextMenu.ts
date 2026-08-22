@@ -3,7 +3,7 @@ import { Menu } from "@tauri-apps/api/menu";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { ThemeMode } from "../hooks/useTheme";
 
-type PlacementMode = "taskbar" | "overlay";
+type PlacementMode = "taskbar" | "menubar" | "overlay";
 
 interface WidgetContextMenuOptions {
   detailVisible: boolean;
@@ -22,7 +22,23 @@ export async function openWidgetContextMenu({
   theme,
   onThemeChange,
 }: WidgetContextMenuOptions) {
-  const nextMode: PlacementMode = placementMode === "taskbar" ? "overlay" : "taskbar";
+  const isWindows = navigator.userAgent.includes("Windows");
+  const nextMode: PlacementMode = placementMode === "overlay"
+    ? isWindows ? "taskbar" : "menubar"
+    : "overlay";
+  const placementItems = [
+    {
+      id: "placement",
+      text: nextMode === "overlay"
+        ? "자유 배치"
+        : nextMode === "taskbar"
+          ? "작업표시줄 도킹"
+          : "메뉴 막대에 표시",
+      action: () => {
+        void invoke("change_placement_mode", { mode: nextMode });
+      },
+    },
+  ];
   const menu = await Menu.new({
     items: [
       {
@@ -39,13 +55,7 @@ export async function openWidgetContextMenu({
           void onRefresh();
         },
       },
-      {
-        id: "placement",
-        text: nextMode === "overlay" ? "자유 배치" : "작업표시줄 도킹",
-        action: () => {
-          void invoke("change_placement_mode", { mode: nextMode });
-        },
-      },
+      ...placementItems,
       {
         id: "theme",
         text: theme === "dark" ? "라이트 모드" : "다크 모드",

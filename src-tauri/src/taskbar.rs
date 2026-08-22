@@ -9,6 +9,7 @@ const DETAIL_HEIGHT: f64 = 496.0;
 pub enum PlacementMode {
     #[default]
     Taskbar,
+    MenuBar,
     Overlay,
 }
 
@@ -16,6 +17,7 @@ impl PlacementMode {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Taskbar => "taskbar",
+            Self::MenuBar => "menubar",
             Self::Overlay => "overlay",
         }
     }
@@ -272,7 +274,11 @@ pub fn place_detail(main: &WebviewWindow, detail: &WebviewWindow) -> Result<(), 
 }
 
 pub fn place_detail_at(anchor: Bounds, scale: f64, detail: &WebviewWindow) -> Result<(), String> {
+    #[cfg(windows)]
     let work_area = monitor_work_area_for_bounds(anchor)
+        .ok_or_else(|| "현재 모니터의 작업 영역을 찾을 수 없습니다.".to_string())?;
+    #[cfg(not(windows))]
+    let work_area = monitor_work_area(detail)
         .ok_or_else(|| "현재 모니터의 작업 영역을 찾을 수 없습니다.".to_string())?;
     place_detail_in_work_area(anchor, work_area, scale, detail)
 }
@@ -546,11 +552,6 @@ fn monitor_work_area_for_bounds(bounds: Bounds) -> Option<Bounds> {
         right: info.rcWork.right,
         bottom: info.rcWork.bottom,
     })
-}
-
-#[cfg(not(windows))]
-fn monitor_work_area_for_bounds(bounds: Bounds) -> Option<Bounds> {
-    Some(bounds)
 }
 
 #[cfg(windows)]

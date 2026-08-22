@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36">
+  <circle
+    cx="18"
+    cy="18"
+    r="12"
+    fill="none"
+    stroke="#000"
+    stroke-width="3.6"
+    stroke-linecap="round"
+    stroke-dasharray="21.1 4"
+    transform="rotate(-90 18 18)"
+  />
+  <path
+    d="M18 19 L24.8 12.2"
+    fill="none"
+    stroke="#000"
+    stroke-width="3.2"
+    stroke-linecap="round"
+  />
+  <circle cx="18" cy="19" r="2.3" fill="#000" />
+</svg>

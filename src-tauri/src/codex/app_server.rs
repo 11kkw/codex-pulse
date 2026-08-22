@@ -18,6 +18,10 @@ pub struct AppServerClient {
 impl AppServerClient {
     pub fn connect() -> Result<Self, String> {
         let executable = find_codex_executable()?;
+        crate::logging::write(format!(
+            "starting Codex app-server: {}",
+            executable.display()
+        ));
         let mut command = Command::new(&executable);
         command
             .arg("app-server")
@@ -124,6 +128,7 @@ fn find_codex_executable() -> Result<PathBuf, String> {
         }
     }
 
+    #[cfg(windows)]
     if let Some(local_app_data) = env::var_os("LOCALAPPDATA").map(PathBuf::from) {
         let mut desktop_candidates = Vec::new();
         collect_versioned_executables(
@@ -136,6 +141,7 @@ fn find_codex_executable() -> Result<PathBuf, String> {
         }
     }
 
+    #[cfg(windows)]
     if let Some(user_profile) = env::var_os("USERPROFILE").map(PathBuf::from) {
         let mut extension_candidates = Vec::new();
         for extensions_dir in [
@@ -149,30 +155,78 @@ fn find_codex_executable() -> Result<PathBuf, String> {
         }
     }
 
-    let mut where_command = Command::new("where.exe");
-    where_command.arg("codex.exe");
-    hide_console(&mut where_command);
-    if let Ok(output) = where_command.output() {
-        if output.status.success() {
-            if let Some(path) = String::from_utf8_lossy(&output.stdout)
-                .lines()
-                .map(str::trim)
-                .filter(|line| !line.is_empty())
-                .map(PathBuf::from)
-                .find(|path| {
-                    path.is_file()
-                        && !path
-                            .to_string_lossy()
-                            .to_ascii_lowercase()
-                            .contains("\\windowsapps\\")
-                })
-            {
-                return Ok(path);
+    #[cfg(target_os = "macos")]
+    if let Some(home) = env::var_os("HOME").map(PathBuf::from) {
+        let mut extension_candidates = Vec::new();
+        for extensions_dir in [
+            home.join(".vscode").join("extensions"),
+            home.join(".vscode-insiders").join("extensions"),
+            home.join(".windsurf").join("extensions"),
+        ] {
+            collect_matching_extension_executables(&extensions_dir, &mut extension_candidates);
+        }
+        if let Some(path) = newest_candidate(extension_candidates) {
+            return Ok(path);
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    for path in ["/opt/homebrew/bin/codex", "/usr/local/bin/codex"] {
+        let candidate = PathBuf::from(path);
+        if candidate.is_file() {
+            return Ok(candidate);
+        }
+    }
+
+    #[cfg(not(windows))]
+    {
+        let mut which_command = Command::new("which");
+        which_command.arg("codex");
+        if let Ok(output) = which_command.output() {
+            if output.status.success() {
+                if let Some(path) = String::from_utf8_lossy(&output.stdout)
+                    .lines()
+                    .map(str::trim)
+                    .find(|line| !line.is_empty())
+                    .map(PathBuf::from)
+                    .filter(|path| path.is_file())
+                {
+                    return Ok(path);
+                }
             }
         }
     }
 
-    Err("Codex 실행 파일을 찾지 못했습니다. Codex Desktop을 설치하거나 CODEX_EXECUTABLE 환경 변수에 codex.exe 경로를 지정해 주세요.".to_string())
+    #[cfg(windows)]
+    {
+        let mut where_command = Command::new("where.exe");
+        where_command.arg("codex.exe");
+        hide_console(&mut where_command);
+        if let Ok(output) = where_command.output() {
+            if output.status.success() {
+                if let Some(path) = String::from_utf8_lossy(&output.stdout)
+                    .lines()
+                    .map(str::trim)
+                    .filter(|line| !line.is_empty())
+                    .map(PathBuf::from)
+                    .find(|path| {
+                        path.is_file()
+                            && !path
+                                .to_string_lossy()
+                                .to_ascii_lowercase()
+                                .contains("\\windowsapps\\")
+                    })
+                {
+                    return Ok(path);
+                }
+            }
+        }
+    }
+
+    Err(format!(
+        "Codex 실행 파일을 찾지 못했습니다. Codex CLI를 설치하거나 CODEX_EXECUTABLE 환경 변수에 {} 경로를 지정해 주세요.",
+        if cfg!(windows) { "codex.exe" } else { "codex" }
+    ))
 }
 
 #[cfg(windows)]
@@ -222,13 +276,19 @@ fn collect_matching_extension_executables(parent: &Path, candidates: &mut Vec<Pa
             continue;
         }
 
-        let candidate = entry
-            .path()
-            .join("bin")
-            .join("windows-x86_64")
-            .join("codex.exe");
-        if candidate.is_file() {
-            candidates.push(candidate);
+        let extension = entry.path();
+        #[cfg(windows)]
+        let relative_candidates = ["bin/windows-x86_64/codex.exe"];
+        #[cfg(target_os = "macos")]
+        let relative_candidates = ["bin/macos-aarch64/codex", "bin/macos-x86_64/codex"];
+        #[cfg(all(not(windows), not(target_os = "macos")))]
+        let relative_candidates = ["bin/linux-x86_64/codex", "bin/linux-aarch64/codex"];
+
+        for relative in relative_candidates {
+            let candidate = extension.join(relative);
+            if candidate.is_file() {
+                candidates.push(candidate);
+            }
         }
     }
 }

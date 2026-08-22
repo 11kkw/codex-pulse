@@ -7,9 +7,26 @@ use std::{
 use chrono::Local;
 
 fn log_directory() -> Option<PathBuf> {
-    std::env::var_os("LOCALAPPDATA")
-        .map(PathBuf::from)
-        .map(|path| path.join("Codex Pulse").join("logs"))
+    if let Some(path) = std::env::var_os("LOCALAPPDATA").map(PathBuf::from) {
+        return Some(path.join("Codex Pulse").join("logs"));
+    }
+
+    #[cfg(target_os = "macos")]
+    if let Some(path) = std::env::var_os("HOME").map(PathBuf::from) {
+        return Some(path.join("Library").join("Logs").join("Codex Pulse"));
+    }
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        if let Some(path) = std::env::var_os("XDG_STATE_HOME").map(PathBuf::from) {
+            return Some(path.join("codex-pulse"));
+        }
+        if let Some(path) = std::env::var_os("HOME").map(PathBuf::from) {
+            return Some(path.join(".local").join("state").join("codex-pulse"));
+        }
+    }
+
+    None
 }
 
 pub fn log_path() -> Option<PathBuf> {

@@ -7,6 +7,7 @@ const projectRoot = path.resolve(import.meta.dirname, "..");
 const targetDir = path.join(os.tmpdir(), "codex-pulse-cargo-target-v2");
 const release = process.argv.includes("--release");
 const profileDir = release ? "release" : "debug";
+const executableName = process.platform === "win32" ? "codex-pulse.exe" : "codex-pulse";
 const cargoArgs = [
   "build",
   "--manifest-path",
@@ -37,6 +38,6 @@ if (exitCode !== 0) process.exit(exitCode);
 const outputDir = path.join(projectRoot, "src-tauri", "target", profileDir);
 await mkdir(outputDir, { recursive: true });
 await copyFile(
-  path.join(targetDir, profileDir, "codex-pulse.exe"),
-  path.join(outputDir, "codex-pulse.exe"),
+  path.join(targetDir, profileDir, executableName),
+  path.join(outputDir, executableName),
 );

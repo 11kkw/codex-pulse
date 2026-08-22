@@ -10,6 +10,7 @@
     "frontendDist": "../dist/client"
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [
       {
         "label": "main",
@@ -56,7 +57,8 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis", "msi"],
+    "targets": "all",
+    "category": "DeveloperTool",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -64,7 +66,12 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "shortDescription": "Codex usage and Windows resource taskbar widget",
-    "longDescription": "A compact always-on-top widget for Codex rate limits, token activity, CPU, and memory usage."
+    "shortDescription": "Codex usage and desktop resource widget",
+    "longDescription": "A compact always-on-top widget for Codex rate limits, token activity, CPU, and memory usage.",
+    "macOS": {
+      "bundleName": "Codex Pulse",
+      "infoPlist": "Info.plist",
+      "signingIdentity": "-"
+    }
   }
 }

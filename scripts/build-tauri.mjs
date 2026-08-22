@@ -16,7 +16,12 @@ const args = ["build"];
 if (noBundle) {
   args.push("--no-bundle");
 } else {
-  args.push("--bundles", "nsis");
+  const bundleTypes = process.platform === "win32"
+    ? ["nsis"]
+    : process.platform === "darwin"
+      ? ["app", "dmg"]
+      : ["appimage"];
+  args.push("--bundles", ...bundleTypes);
 }
 
 const exitCode = await new Promise((resolve, reject) => {
@@ -35,13 +40,14 @@ const exitCode = await new Promise((resolve, reject) => {
 
 if (exitCode !== 0) process.exit(exitCode);
 
-const executableSource = path.join(targetDir, "release", "codex-pulse.exe");
+const executableName = process.platform === "win32" ? "codex-pulse.exe" : "codex-pulse";
+const executableSource = path.join(targetDir, "release", executableName);
 const executableDestination = path.join(
   projectRoot,
   "src-tauri",
   "target",
   "release",
-  "codex-pulse.exe",
+  executableName,
 );
 await mkdir(path.dirname(executableDestination), { recursive: true });
 await cp(executableSource, executableDestination, { force: true });

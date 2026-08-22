@@ -1,6 +1,6 @@
 # Codex Pulse
 
-Windows 작업 표시줄 왼쪽에 고정하는 Codex 사용량 및 시스템 상태 위젯입니다.
+Windows 작업 표시줄 또는 macOS 메뉴 막대에서 사용하는 Codex 사용량 및 시스템 상태 위젯입니다.
 
 ## 다운로드
 
@@ -27,25 +27,30 @@ Windows 작업 표시줄 왼쪽에 고정하는 Codex 사용량 및 시스템 �
 
 ## 개발 실행
 
-```powershell
+```shell
 npm install
 npm run tauri:dev
 ```
 
 브라우저에서 UI만 확인:
 
-```powershell
+```shell
 npm run dev
 ```
 
 ## 빌드
 
-```powershell
+```shell
 npm run build:frontend
 npm run tauri:build
 ```
 
-Windows 설치 파일은 `src-tauri/target/release/bundle/` 아래에 생성됩니다.
+Windows 설치 파일(`.exe`)과 macOS 디스크 이미지(`.dmg`)는
+`src-tauri/target/release/bundle/` 아래에 생성됩니다. macOS에서는 RunCat처럼 메뉴 막대에
+Codex 잔여량·CPU·메모리를 표시하고, 클릭하면 상세 패널이 열립니다. 필요하면 메뉴에서
+드래그 가능한 항상 위 오버레이로 전환할 수 있습니다. macOS 빌드는 `.app`과 `.dmg`를
+모두 만들고 로컬 배포용 ad-hoc 번들 서명을 적용하므로 Applications와 Spotlight에서
+`Codex Pulse`로 인식됩니다.
 
 ## 실제 데이터 연결
 
